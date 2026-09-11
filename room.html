@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Комната подростка — 3D</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { overflow: hidden; background: #1a1a2e; font-family: 'Segoe UI', Arial, sans-serif; }
+canvas { display: block; }
+
+#ui {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 8px; z-index: 10;
+}
+#ui button {
+  padding: 10px 18px; border: 2px solid rgba(255,255,255,0.25);
+  border-radius: 12px; background: rgba(20,20,40,0.85);
+  color: #fff; font-size: 14px; cursor: pointer;
+  backdrop-filter: blur(8px); transition: all 0.25s;
+}
+#ui button:hover { background: rgba(80,80,160,0.8); border-color: #7c7cff; }
+#ui button.active { background: rgba(100,100,220,0.7); border-color: #a0a0ff; box-shadow: 0 0 12px rgba(120,120,255,0.4); }
+
+#info {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  color: rgba(255,255,255,0.5); font-size: 12px; text-align: center;
+  pointer-events: none;
+}
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <button class="active" onclick="setWalls('all')">🏠 Все стены</button>
+  <button onclick="setWalls('back')">🔲 Только задник</button>
+  <button onclick="setWalls('floor')">⬜ Только пол</button>
+</div>
+<div id="info">ЛКМ — вращение &nbsp;|&nbsp; ПКМ — перемещение &nbsp;|&nbsp; Колёсико — зум</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.163.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.163.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ───── renderer ───── */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.appendChild(renderer.domElement);
+
+/* ───── scene ───── */
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.FogExp2(0x1a1a2e, 0.012);
+
+/* ───── camera ───── */
+const camera = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 200);
+camera.position.set(14, 12, 14);
+
+/* ───── controls ───── */
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 1.5, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.minDistance = 6;
+controls.maxDistance = 40;
+controls.maxPolarAngle = Math.PI / 2.05;
+controls.update();
+
+/* ───── lights ───── */
+const amb = new THREE.AmbientLight(0x8888cc, 0.6);
+scene.add(amb);
+
+const sun = new THREE.DirectionalLight(0xffeedd, 1.8);
+sun.position.set(6, 12, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -10; sun.shadow.camera.right = 10;
+sun.shadow.camera.top = 10; sun.shadow.camera.bottom = -10;
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 30;
+sun.shadow.bias = -0.002;
+scene.add(sun);
+
+const fill = new THREE.DirectionalLight(0x6688cc, 0.4);
+fill.position.set(-5, 6, -4);
+scene.add(fill);
+
+/* ───── helpers ───── */
+function mat(color, opts = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness: opts.r ?? 0.7, metalness: opts.m ?? 0.05, ...opts });
+}
+function box(w, h, d, material) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, material);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+function cyl(rT, rB, h, seg, material) {
+  const g = new THREE.CylinderGeometry(rT, rB, h, seg);
+  const m = new THREE.Mesh(g, material);
+  m.castShadow = true; m.receiveShadow = true;
+  return m;
+}
+
+/* ───── room dimensions ───── */
+const RW = 8, RH = 4, RD = 8, WT = 0.15;
+
+/* ───── materials ───── */
+const mFloor   = mat(0xc4956a, { r: 0.85 });
+const mWall    = mat(0xd4cfc4, { r: 0.9 });
+const mCeiling = mat(0xe8e4dc, { r: 0.95 });
+const mWood    = mat(0x8b6f4e);
+const mWoodDk  = mat(0x5c4033);
+const mWoodLt  = mat(0xb8956a);
+const mMetal   = mat(0x888899, { r: 0.3, m: 0.7 });
+const mFabric  = mat(0x3a5ba0);
+const mPillow  = mat(0xe8e0d0);
+const mBlanket = mat(0x2255cc);
+const mScreen  = mat(0x111122, { r: 0.1, m: 0.3, emissive: 0x2244aa, emissiveIntensity: 0.5 });
+const mRed     = mat(0xcc3333);
+const mGreen   = mat(0x33aa55);
+const mYellow  = mat(0xddcc33);
+const mBlack   = mat(0x222222, { r: 0.4 });
+const mWhite   = mat(0xeeeeee);
+const mPink    = mat(0xff6699);
+const mPinkCarpet = mat(0xff88aa, { r: 0.95 });
+const mOrange  = mat(0xff8833);
+const mSilver  = mat(0xccccdd, { r: 0.2, m: 0.8 });
+const mMirror  = mat(0xccddee, { r: 0.05, m: 0.95 });
+const mPoster1 = mat(0xff4466, { r: 0.6 });
+const mPoster2 = mat(0x44aaff, { r: 0.6 });
+const mGuitar  = mat(0xcc5500, { r: 0.5 });
+const mShoe    = mat(0x222222);
+const mLampShade = mat(0xffeecc, { r: 0.6, emissive: 0xffddaa, emissiveIntensity: 0.3 });
+const mApple   = mat(0xdddddd, { r: 0.15, m: 0.6 });
+const mAppleScreen = mat(0x111122, { r: 0.1, m: 0.2, emissive: 0x334466, emissiveIntensity: 0.6 });
+
+/* ───── groups ───── */
+const wallBack  = new THREE.Group(); wallBack.name  = 'wallBack';
+const wallLeft  = new THREE.Group(); wallLeft.name  = 'wallLeft';
+const wallRight = new THREE.Group(); wallRight.name = 'wallRight';
+const wallFront = new THREE.Group(); wallFront.name = 'wallFront';
+const floorGrp  = new THREE.Group(); floorGrp.name  = 'floor';
+const furniture = new THREE.Group(); furniture.name = 'furniture';
+
+scene.add(wallBack, wallLeft, wallRight, wallFront, floorGrp, furniture);
+
+/* ───── floor ───── */
+const floor = box(RW, WT, RD, mFloor);
+floor.position.set(0, -WT / 2, 0);
+floor.receiveShadow = true;
+floorGrp.add(floor);
+
+for (let i = -3.5; i <= 3.5; i += 1) {
+  const line = box(RW, 0.005, 0.02, mat(0xa07850));
+  line.position.set(0, 0.005, i);
+  floorGrp.add(line);
+}
+
+/* ───── walls ───── */
+function makeWall(w, h, d) {
+  const m = box(w, h, d, mWall);
+  m.receiveShadow = true;
+  return m;
+}
+
+const wB = makeWall(RW, RH, WT);
+wB.position.set(0, RH / 2, -RD / 2);
+wallBack.add(wB);
+
+const wL = makeWall(WT, RH, RD);
+wL.position.set(-RW / 2, RH / 2, 0);
+wallLeft.add(wL);
+
+const wR = makeWall(WT, RH, RD);
+wR.position.set(RW / 2, RH / 2, 0);
+wallRight.add(wR);
+
+const wF = makeWall(RW, RH, WT);
+wF.position.set(0, RH / 2, RD / 2);
+wallFront.add(wF);
+
+function baseboard(w, d, px, pz) {
+  const b = box(w, 0.12, d, mWoodDk);
+  b.position.set(px, 0.06, pz);
+  return b;
+}
+wallBack.add(baseboard(RW, 0.06, 0, -RD / 2 + 0.03));
+wallLeft.add(baseboard(0.06, RD, -RW / 2 + 0.03, 0));
+wallRight.add(baseboard(0.06, RD, RW / 2 - 0.03, 0));
+wallFront.add(baseboard(RW, 0.06, 0, RD / 2 - 0.03));
+
+/* ───── window on back wall ───── */
+{
+  const frame = box(1.8, 1.6, 0.08, mWhite);
+  frame.position.set(2, 2.4, -RD / 2 + 0.05);
+  wallBack.add(frame);
+  const glass = box(1.6, 1.4, 0.03, new THREE.MeshStandardMaterial({
+    color: 0x88bbff, transparent: true, opacity: 0.3, roughness: 0.05, metalness: 0.1
+  }));
+  glass.position.set(2, 2.4, -RD / 2 + 0.08);
+  wallBack.add(glass);
+  const ch = box(1.6, 0.04, 0.05, mWhite);
+  ch.position.set(2, 2.4, -RD / 2 + 0.1);
+  wallBack.add(ch);
+  const cv = box(0.04, 1.4, 0.05, mWhite);
+  cv.position.set(2, 2.4, -RD / 2 + 0.1);
+  wallBack.add(cv);
+
+  /* подоконник */
+  const sill = box(2.0, 0.06, 0.35, mWhite);
+  sill.position.set(2, 1.55, -RD / 2 + 0.2);
+  wallBack.add(sill);
+}
+
+/* ═══════════ FURNITURE ═══════════ */
+
+/* ── КРОВАТЬ справа, у правой стены, изголовьем к задней ── */
+{
+  const g = new THREE.Group();
+  // каркас
+  const base = box(2, 0.35, 3.2, mWoodLt);
+  base.position.set(0, 0.175, 0);
+  g.add(base);
+  // матрас
+  const matt = box(1.9, 0.25, 3.1, mWhite);
+  matt.position.set(0, 0.475, 0);
+  g.add(matt);
+  // синее покрывало
+  const blanket = box(1.85, 0.1, 2.2, mBlanket);
+  blanket.position.set(0, 0.65, 0.3);
+  g.add(blanket);
+  // изголовье
+  const hb = box(2, 1.2, 0.12, mWoodDk);
+  hb.position.set(0, 0.95, -1.6);
+  g.add(hb);
+  // ножки
+  for (const [x, z] of [[-0.9, -1.5], [0.9, -1.5], [-0.9, 1.5], [0.9, 1.5]]) {
+    const leg = box(0.08, 0.35, 0.08, mWoodDk);
+    leg.position.set(x, 0.175, z);
+    g.add(leg);
+  }
+  g.position.set(2.8, 0, -1);
+  furniture.add(g);
+}
+
+/* ── ПОДУШКИ-СЕРДЕЧКИ на кровати ── */
+{
+  function makeHeart(size, material) {
+    const shape = new THREE.Shape();
+    const s = size;
+    shape.moveTo(0, -s * 0.4);
+    shape.bezierCurveTo(s * 0.5, -s * 0.8, s * 1.0, -s * 0.2, 0, s * 0.5);
+    shape.bezierCurveTo(-s * 1.0, -s * 0.2, -s * 0.5, -s * 0.8, 0, -s * 0.4);
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: s * 0.35, bevelEnabled: true,
+      bevelSize: s * 0.08, bevelThickness: s * 0.06, bevelSegments: 4
+    });
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.castShadow = true;
+    return mesh;
+  }
+
+  // два сердечка у изголовья
+  const h1 = makeHeart(0.22, mPink);
+  h1.rotation.x = -Math.PI / 2;
+  h1.rotation.z = Math.PI;
+  h1.position.set(2.4, 0.72, -2.3);
+  furniture.add(h1);
+
+  const h2 = makeHeart(0.22, mat(0xffaacc));
+  h2.rotation.x = -Math.PI / 2;
+  h2.rotation.z = Math.PI + 0.2;
+  h2.position.set(3.2, 0.72, -2.3);
+  furniture.add(h2);
+
+  // маленькое сердечко посередине
+  const h3 = makeHeart(0.15, mRed);
+  h3.rotation.x = -Math.PI / 2;
+  h3.rotation.z = Math.PI - 0.15;
+  h3.position.set(2.8, 0.72, -2.0);
+  furniture.add(h3);
+}
+
+/* ── СТОЛ напротив кровати (у левой стены) ── */
+{
+  const g = new THREE.Group();
+  // столешница
+  const top = box(2.2, 0.08, 0.9, mWoodLt);
+  top.position.set(0, 1.45, 0);
+  g.add(top);
+  // ножки
+  for (const [x, z] of [[-1, -0.35], [1, -0.35], [-1, 0.35], [1, 0.35]]) {
+    const leg = box(0.06, 1.45, 0.06, mMetal);
+    leg.position.set(x, 0.725, z);
+    g.add(leg);
+  }
+  // тумба с ящиками
+  const drawer = box(0.6, 0.7, 0.7, mWoodLt);
+  drawer.position.set(-0.7, 1.05, 0);
+  g.add(drawer);
+  for (let i = 0; i < 3; i++) {
+    const handle = box(0.15, 0.02, 0.03, mMetal);
+    handle.position.set(-0.7, 0.85 + i * 0.22, 0.36);
+    g.add(handle);
+  }
+
+  g.position.set(-2.8, 0, -1);
+  g.rotation.y = Math.PI; // стол развёрнут к стене
+  furniture.add(g);
+}
+
+/* ── ПОЛКА над столом ── */
+{
+  const g = new THREE.Group();
+  // полка
+  const shelf = box(1.8, 0.06, 0.3, mWoodLt);
+  shelf.position.set(0, 0, 0);
+  g.add(shelf);
+  // кронштейны
+  for (const x of [-0.7, 0.7]) {
+    const br = box(0.04, 0.2, 0.25, mMetal);
+    br.position.set(x, -0.13, 0);
+    g.add(br);
+  }
+  // книги на полке
+  const bookColors = [0xcc3333, 0x3366cc, 0x33aa55, 0xddaa22, 0x9933cc];
+  let bx = -0.6;
+  for (let i = 0; i < 5; i++) {
+    const bw = 0.05 + Math.random() * 0.04;
+    const bh = 0.22 + Math.random() * 0.08;
+    const bk = box(bw, bh, 0.18, mat(bookColors[i]));
+    bk.position.set(bx + bw / 2, 0.03 + bh / 2, 0);
+    g.add(bk);
+    bx += bw + 0.02;
+  }
+
+  g.position.set(-2.8, 2.5, -3.6);
+  furniture.add(g);
+}
+
+/* ── МАКБУК на столе ── */
+{
+  const g = new THREE.Group();
+  // основание
+  const base = box(0.35, 0.015, 0.24, mApple);
+  base.position.set(0, 0.008, 0);
+  g.add(base);
+  // клавиатура (тёмная область)
+  const kb = box(0.28, 0.003, 0.12, mat(0x333333, { r: 0.5 }));
+  kb.position.set(0, 0.018, 0.02);
+  g.add(kb);
+  // тачпад
+  const tp = box(0.1, 0.003, 0.06, mat(0xbbbbcc, { r: 0.15, m: 0.5 }));
+  tp.position.set(0, 0.018, -0.07);
+  g.add(tp);
+  // экран (открыт под углом)
+  const screenFrame = box(0.34, 0.23, 0.006, mApple);
+  screenFrame.position.set(0, 0.12, -0.12);
+  screenFrame.rotation.x = -0.25;
+  g.add(screenFrame);
+  // дисплей
+  const display = box(0.30, 0.19, 0.003, mAppleScreen);
+  display.position.set(0, 0.12, -0.117);
+  display.rotation.x = -0.25;
+  g.add(display);
+  // логотип яблоко (кружок на крышке — виден сзади)
+  const logo = cyl(0.015, 0.015, 0.002, 12, mat(0xffffff, { emissive: 0xffffff, emissiveIntensity: 0.3 }));
+  logo.rotation.x = Math.PI / 2;
+  logo.position.set(0, 0.14, -0.125);
+  g.add(logo);
+
+  g.position.set(-2.8, 1.49, -1.0);
+  furniture.add(g);
+}
+
+/* ── ШКАФ с зеркалами слева от кровати ── */
+{
+  const g = new THREE.Group();
+  // корпус
+  const body = box(1.4, 3.2, 0.7, mWoodDk);
+  body.position.set(0, 1.6, 0);
+  g.add(body);
+  // дверцы
+  const d1 = box(0.68, 3.1, 0.04, mWood);
+  d1.position.set(-0.34, 1.6, 0.37);
+  g.add(d1);
+  const d2 = box(0.68, 3.1, 0.04, mWood);
+  d2.position.set(0.34, 1.6, 0.37);
+  g.add(d2);
+  // зеркала на дверцах
+  const mir1 = box(0.55, 2.4, 0.02, mMirror);
+  mir1.position.set(-0.34, 1.6, 0.4);
+  g.add(mir1);
+  const mir2 = box(0.55, 2.4, 0.02, mMirror);
+  mir2.position.set(0.34, 1.6, 0.4);
+  g.add(mir2);
+  // ручки
+  for (const x of [-0.05, 0.05]) {
+    const h = box(0.03, 0.2, 0.04, mMetal);
+    h.position.set(x, 1.6, 0.42);
+    g.add(h);
+  }
+  // рамка зеркал
+  for (const x of [-0.34, 0.34]) {
+    const frameT = box(0.58, 0.03, 0.03, mMetal);
+    frameT.position.set(x, 2.82, 0.41);
+    g.add(frameT);
+    const frameB = box(0.58, 0.03, 0.03, mMetal);
+    frameB.position.set(x, 0.38, 0.41);
+    g.add(frameB);
+    const frameL = box(0.03, 2.44, 0.03, mMetal);
+    frameL.position.set(x - 0.28, 1.6, 0.41);
+    g.add(frameL);
+    const frameR = box(0.03, 2.44, 0.03, mMetal);
+    frameR.position.set(x + 0.28, 1.6, 0.41);
+    g.add(frameR);
+  }
+
+  g.position.set(0.5, 0, -3.3);
+  furniture.add(g);
+}
+
+/* ── РОЗОВЫЙ КОВЁР ── */
+{
+  const border = box(3.6, 0.015, 2.8, mat(0xdd5588, { r: 0.95 }));
+  border.position.set(0, 0.005, 0.5);
+  furniture.add(border);
+  const rug = box(3.4, 0.02, 2.6, mPinkCarpet);
+  rug.position.set(0, 0.012, 0.5);
+  furniture.add(rug);
+  // узор — круги
+  for (let i = 0; i < 3; i++) {
+    const circle = cyl(0.3 - i * 0.08, 0.3 - i * 0.08, 0.005, 24, mat(0xff99bb, { r: 0.9 }));
+    circle.position.set(0, 0.025, 0.5);
+    furniture.add(circle);
+  }
+}
+
+/* ── КАРТИНЫ И ШКАТУЛКА на подоконнике ── */
+{
+  // картина 1 (маленькая, стоит)
+  const pic1Frame = box(0.25, 0.35, 0.03, mWoodDk);
+  pic1Frame.position.set(1.5, 1.78, -RD / 2 + 0.2);
+  pic1Frame.rotation.x = -0.1;
+  wallBack.add(pic1Frame);
+  const pic1 = box(0.2, 0.3, 0.01, mat(0x66aacc));
+  pic1.position.set(1.5, 1.78, -RD / 2 + 0.22);
+  pic1.rotation.x = -0.1;
+  wallBack.add(pic1);
+
+  // картина 2
+  const pic2Frame = box(0.2, 0.28, 0.03, mWood);
+  pic2Frame.position.set(1.9, 1.74, -RD / 2 + 0.2);
+  pic2Frame.rotation.x = -0.1;
+  wallBack.add(pic2Frame);
+  const pic2 = box(0.15, 0.23, 0.01, mat(0xffaa66));
+  pic2.position.set(1.9, 1.74, -RD / 2 + 0.22);
+  pic2.rotation.x = -0.1;
+  wallBack.add(pic2);
+
+  // шкатулка
+  const g = new THREE.Group();
+  const boxBody = box(0.2, 0.1, 0.15, mat(0x8b4513, { r: 0.5 }));
+  boxBody.position.y = 0.05;
+  g.add(boxBody);
+  // крышка
+  const lid = box(0.21, 0.025, 0.16, mat(0x9b5523, { r: 0.5 }));
+  lid.position.y = 0.11;
+  g.add(lid);
+  // замочек
+  const lock = box(0.03, 0.03, 0.02, mMetal);
+  lock.position.set(0, 0.08, 0.08);
+  g.add(lock);
+  // узор
+  const decor = box(0.12, 0.005, 0.08, mat(0xddaa44, { m: 0.5 }));
+  decor.position.set(0, 0.125, 0);
+  g.add(decor);
+
+  g.position.set(2.4, 1.58, -RD / 2 + 0.2);
+  wallBack.add(g);
+}
+
+/* ── НАСТЕННАЯ ЛАМПА (над столом, рядом с полкой) ── */
+{
+  const g = new THREE.Group();
+  const mount = cyl(0.04, 0.04, 0.04, 12, mMetal);
+  mount.position.y = 0;
+  g.add(mount);
+  const arm = cyl(0.01, 0.01, 0.3, 8, mMetal);
+  arm.position.set(0, -0.15, 0.05);
+  arm.rotation.x = 0.3;
+  g.add(arm);
+  const shade = cyl(0.01, 0.08, 0.08, 12, mLampShade);
+  shade.position.set(0, -0.3, 0.1);
+  g.add(shade);
+  const pl = new THREE.PointLight(0xffddaa, 0.5, 3);
+  pl.position.set(0, -0.35, 0.1);
+  g.add(pl);
+  g.position.set(-2.8, 3.2, -3.7);
+  furniture.add(g);
+}
+
+/* ── СТУЛ у стола ── */
+{
+  const g = new THREE.Group();
+  // сиденье
+  const seat = box(0.45, 0.06, 0.45, mFabric);
+  seat.position.set(0, 0.8, 0);
+  g.add(seat);
+  // спинка
+  const back = box(0.45, 0.5, 0.05, mFabric);
+  back.position.set(0, 1.1, -0.2);
+  g.add(back);
+  // ножки
+  for (const [x, z] of [[-0.18, -0.18], [0.18, -0.18], [-0.18, 0.18], [0.18, 0.18]]) {
+    const leg = box(0.04, 0.8, 0.04, mWoodDk);
+    leg.position.set(x, 0.4, z);
+    g.add(leg);
+  }
+  g.position.set(-2.8, 0, 0);
+  g.rotation.y = Math.PI;
+  furniture.add(g);
+}
+
+/* ── ТРАШ CAN ── */
+{
+  const tc = cyl(0.15, 0.12, 0.35, 12, mMetal);
+  tc.position.set(-1.5, 0.175, -0.5);
+  furniture.add(tc);
+}
+
+/* ── POSTERS on left wall ── */
+{
+  const p1 = box(0.02, 1.0, 0.7, mPoster1);
+  p1.position.set(-3.9, 2.5, 1.5);
+  wallLeft.add(p1);
+
+  const p2 = box(0.02, 0.7, 0.9, mPoster2);
+  p2.position.set(-3.9, 2.3, -2.5);
+  wallLeft.add(p2);
+}
+
+/* ── LED STRIP on back wall ── */
+{
+  const led = box(RW - 0.5, 0.03, 0.03, new THREE.MeshStandardMaterial({
+    color: 0xff00ff, emissive: 0xff00ff, emissiveIntensity: 2, roughness: 0.2
+  }));
+  led.position.set(0, 3.85, -3.85);
+  wallBack.add(led);
+  const ledLight = new THREE.PointLight(0xff44ff, 0.5, 6);
+  ledLight.position.set(0, 3.7, -3.5);
+  wallBack.add(ledLight);
+}
+
+/* ── LED STRIP on right wall ── */
+{
+  const led = box(0.03, 0.03, RD - 0.5, new THREE.MeshStandardMaterial({
+    color: 0x00ffff, emissive: 0x00ffff, emissiveIntensity: 2, roughness: 0.2
+  }));
+  led.position.set(3.85, 3.85, 0);
+  wallRight.add(led);
+}
+
+/* ── SHOES near front wall ── */
+{
+  for (let i = 0; i < 2; i++) {
+    const shoe = box(0.1, 0.06, 0.28, mShoe);
+    shoe.position.set(1.5 + i * 0.18, 0.03, 3.3);
+    shoe.rotation.y = 0.2 + i * 0.15;
+    furniture.add(shoe);
+  }
+}
+
+/* ── CEILING LIGHT ── */
+{
+  const g = new THREE.Group();
+  const wire = cyl(0.005, 0.005, 0.6, 6, mBlack);
+  wire.position.y = RH - 0.3;
+  g.add(wire);
+  const shade = cyl(0.01, 0.25, 0.15, 16, mMetal);
+  shade.position.y = RH - 0.65;
+  g.add(shade);
+  const bulb = new THREE.Mesh(
+    new THREE.SphereGeometry(0.06, 12, 8),
+    new THREE.MeshStandardMaterial({ color: 0xffffee, emissive: 0xffffcc, emissiveIntensity: 1 })
+  );
+  bulb.position.y = RH - 0.72;
+  g.add(bulb);
+  const cl = new THREE.PointLight(0xffeedd, 0.6, 10);
+  cl.position.y = RH - 0.7;
+  cl.castShadow = true;
+  g.add(cl);
+  g.position.set(0, 0, 0);
+  furniture.add(g);
+}
+
+/* ── PLANT in corner ── */
+{
+  const g = new THREE.Group();
+  const pot = cyl(0.12, 0.1, 0.2, 12, mat(0xcc6633));
+  pot.position.y = 0.1;
+  g.add(pot);
+  const soil = cyl(0.11, 0.11, 0.02, 12, mat(0x3a2a1a));
+  soil.position.y = 0.21;
+  g.add(soil);
+  for (let i = 0; i < 7; i++) {
+    const leaf = new THREE.Mesh(
+      new THREE.SphereGeometry(0.08, 8, 6),
+      mGreen
+    );
+    const a = (i / 7) * Math.PI * 2;
+    leaf.position.set(Math.cos(a) * 0.08, 0.35 + Math.random() * 0.15, Math.sin(a) * 0.08);
+    leaf.scale.set(1, 0.6, 1);
+    leaf.castShadow = true;
+    g.add(leaf);
+  }
+  g.position.set(3.4, 0, 3.0);
+  furniture.add(g);
+}
+
+/* ── CLOCK on right wall ── */
+{
+  const g = new THREE.Group();
+  const face = cyl(0.2, 0.2, 0.03, 24, mWhite);
+  face.rotation.z = Math.PI / 2;
+  g.add(face);
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.2, 0.015, 8, 24),
+    mBlack
+  );
+  rim.rotation.y = Math.PI / 2;
+  g.add(rim);
+  const h1 = box(0.01, 0.12, 0.01, mBlack);
+  h1.position.set(0.02, 0.04, 0);
+  g.add(h1);
+  const h2 = box(0.008, 0.16, 0.008, mRed);
+  h2.position.set(0.02, 0.02, 0.05);
+  h2.rotation.x = 0.8;
+  g.add(h2);
+  g.position.set(3.9, 2.8, 0);
+  wallRight.add(g);
+}
+
+/* ── BACKPACK near bed ── */
+{
+  const g = new THREE.Group();
+  const body = box(0.3, 0.4, 0.15, mat(0x2255aa));
+  body.position.y = 0.2;
+  g.add(body);
+  const top = new THREE.Mesh(
+    new THREE.SphereGeometry(0.15, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2),
+    mat(0x2255aa)
+  );
+  top.position.y = 0.4;
+  top.scale.set(1, 0.5, 0.5);
+  g.add(top);
+  g.position.set(1.5, 0, 1.0);
+  g.rotation.y = 0.3;
+  furniture.add(g);
+}
+
+/* ── PHONE on bed ── */
+{
+  const phone = box(0.07, 0.01, 0.14, mBlack);
+  phone.position.set(3.0, 0.73, -0.5);
+  phone.rotation.y = 0.5;
+  furniture.add(phone);
+}
+
+/* ── PIZZA BOX on floor ── */
+{
+  const pz = box(0.35, 0.04, 0.35, mat(0xcc9944));
+  pz.position.set(-0.5, 0.02, 2.0);
+  pz.rotation.y = 0.6;
+  furniture.add(pz);
+}
+
+/* ── HEADPHONES on desk ── */
+{
+  const g = new THREE.Group();
+  const band = new THREE.Mesh(
+    new THREE.TorusGeometry(0.1, 0.015, 8, 16, Math.PI),
+    mBlack
+  );
+  band.position.y = 0.1;
+  band.castShadow = true;
+  g.add(band);
+  for (const s of [-1, 1]) {
+    const cup = cyl(0.05, 0.05, 0.03, 12, mBlack);
+    cup.rotation.z = Math.PI / 2;
+    cup.position.set(s * 0.1, 0.0, 0);
+    g.add(cup);
+  }
+  g.position.set(-3.3, 1.5, -1.3);
+  furniture.add(g);
+}
+
+/* ── SMALL RUG under bed area ── */
+{
+  const slipper1 = box(0.08, 0.03, 0.2, mPink);
+  slipper1.position.set(2.3, 0.015, 0.8);
+  slipper1.rotation.y = 0.2;
+  furniture.add(slipper1);
+  const slipper2 = box(0.08, 0.03, 0.2, mPink);
+  slipper2.position.set(2.5, 0.015, 0.8);
+  slipper2.rotation.y = 0.1;
+  furniture.add(slipper2);
+}
+
+/* ═══════════ WALL TOGGLE ═══════════ */
+const wallGroups = { wallBack, wallLeft, wallRight, wallFront };
+
+window.setWalls = function(mode) {
+  document.querySelectorAll('#ui button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+
+  wallBack.visible  = true;
+  wallLeft.visible  = true;
+  wallRight.visible = true;
+  wallFront.visible = true;
+  floorGrp.visible  = true;
+
+  if (mode === 'back') {
+    wallRight.visible = false;
+    wallFront.visible = false;
+  } else if (mode === 'floor') {
+    wallBack.visible  = false;
+    wallLeft.visible  = false;
+    wallRight.visible = false;
+    wallFront.visible = false;
+  }
+};
+
+/* ───── resize ───── */
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ───── animate ───── */
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
