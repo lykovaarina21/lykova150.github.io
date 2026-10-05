@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Валерьяна в мире правил</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: 'Georgia', serif;
+    background: #000;
+    color: #fff;
+    overflow: hidden;
+    height: 100vh;
+    user-select: none;
+  }
+  
+  #game-container {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: #111;
+  }
+  
+  #background {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background-size: cover;
+    background-position: center;
+    transition: background-image 1s ease;
+    z-index: 1;
+  }
+  
+  #character {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 85vh;
+    z-index: 2;
+    transition: opacity 0.5s ease, transform 0.5s ease;
+    filter: drop-shadow(0 0 20px rgba(0,0,0,0.5));
+  }
+  
+  #dialogue-box {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
+    max-width: 1000px;
+    background: rgba(0, 0, 0, 0.85);
+    border: 2px solid #8b0000;
+    border-radius: 10px;
+    padding: 20px 30px;
+    z-index: 10;
+    box-shadow: 0 0 30px rgba(139, 0, 0, 0.6);
+  }
+  
+  #speaker-name {
+    color: #ff4444;
+    font-size: 1.3em;
+    font-weight: bold;
+    margin-bottom: 10px;
+    text-shadow: 0 0 10px rgba(255, 68, 68, 0.7);
+    letter-spacing: 1px;
+  }
+  
+  #dialogue-text {
+    font-size: 1.1em;
+    line-height: 1.6;
+    min-height: 60px;
+    color: #f0f0f0;
+  }
+  
+  #choices-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    z-index: 15;
+    min-width: 400px;
+  }
+  
+  .choice-btn {
+    background: linear-gradient(135deg, #2a0000, #5c0000);
+    color: #fff;
+    border: 2px solid #8b0000;
+    padding: 15px 30px;
+    font-size: 1.1em;
+    font-family: 'Georgia', serif;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: all 0.3s ease;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  }
+  
+  .choice-btn:hover {
+    background: linear-gradient(135deg, #5c0000, #8b0000);
+    transform: scale(1.05);
+    box-shadow: 0 0 20px rgba(255, 68, 68, 0.6);
+  }
+  
+  #title-screen {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: linear-gradient(135deg, #1a0000, #000);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 100;
+  }
+  
+  #title-screen h1 {
+    font-size: 3.5em;
+    color: #ff4444;
+    text-shadow: 0 0 30px rgba(255, 68, 68, 0.8);
+    margin-bottom: 20px;
+    text-align: center;
+    letter-spacing: 3px;
+  }
+  
+  #title-screen p {
+    font-size: 1.3em;
+    color: #ccc;
+    margin-bottom: 40px;
+    font-style: italic;
+  }
+  
+  #start-btn {
+    background: linear-gradient(135deg, #5c0000, #8b0000);
+    color: #fff;
+    border: 2px solid #ff4444;
+    padding: 20px 60px;
+    font-size: 1.5em;
+    font-family: 'Georgia', serif;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    letter-spacing: 2px;
+  }
+  
+  #start-btn:hover {
+    background: linear-gradient(135deg, #8b0000, #cc0000);
+    transform: scale(1.1);
+    box-shadow: 0 0 40px rgba(255, 68, 68, 0.8);
+  }
+  
+  .ending-screen {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 50;
+    padding: 40px;
+    text-align: center;
+  }
+  
+  .ending-screen h2 {
+    font-size: 2.5em;
+    color: #ff4444;
+    margin-bottom: 20px;
+    text-shadow: 0 0 20px rgba(255, 68, 68, 0.7);
+  }
+  
+  .ending-screen p {
+    font-size: 1.3em;
+    line-height: 1.8;
+    max-width: 700px;
+    margin-bottom: 30px;
+    color: #eee;
+  }
+  
+  .ending-screen button {
+    background: linear-gradient(135deg, #5c0000, #8b0000);
+    color: #fff;
+    border: 2px solid #ff4444;
+    padding: 15px 40px;
+    font-size: 1.2em;
+    cursor: pointer;
+    border-radius: 8px;
+    font-family: 'Georgia', serif;
+  }
+  
+  .ending-screen button:hover {
+    background: linear-gradient(135deg, #8b0000, #cc0000);
+  }
+  
+  .hidden { display: none !important; }
+  
+  .fade-in { animation: fadeIn 1s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  .shake { animation: shake 0.5s ease; }
+  @keyframes shake {
+    0%, 100% { transform: translateX(-50%); }
+    25% { transform: translateX(calc(-50% - 10px)); }
+    75% { transform: translateX(calc(-50% + 10px)); }
+  }
+</style>
+</head>
+<body>
+
+<div id="game-container">
+  <div id="title-screen">
+    <h1>ВАЛЕРЬЯНА<br>В МИРЕ ПРАВИЛ</h1>
+    <p>Город Т-404. Тоталитаризм. Выбор за тобой.</p>
+    <button id="start-btn" onclick="startGame()">НАЧАТЬ ИГРУ</button>
+  </div>
+  
+  <div id="background"></div>
+  <img id="character" class="hidden" src="" alt="character">
+  
+  <div id="dialogue-box" class="hidden">
+    <div id="speaker-name"></div>
+    <div id="dialogue-text"></div>
+  </div>
+  
+  <div id="choices-container" class="hidden"></div>
+</div>
+
+<script>
+// ============ СОСТОЯНИЕ ИГРЫ ============
+let gameState = {
+  currentScene: 'start',
+  trust: 0,         // доверие Липонси
+  courage: 0,       // смелость
+  influence: 0      // влияние в системе
+};
+
+// ============ СЦЕНАРИЙ ============
+const scenes = {
+  // ===== НАЧАЛО =====
+  start: {
+    bg: 'bg_city.jpg',
+    character: null,
+    speaker: '',
+    text: 'Год 2087. Город Т-404. После великой войны мир разделился на сектора, управляемые железной рукой тоталитарного режима. Здесь каждое слово под контролем, каждый шаг — под наблюдением.',
+    next: 'intro2'
+  },
+  intro2: {
+    bg: 'bg_city.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Меня зовут Валерьяна. Мне двадцать два. Я родилась в этом городе и всю жизнь верила, что порядок — это благо. Но сегодня... сегодня я увидела то, что изменило всё.',
+    next: 'intro3'
+  },
+  intro3: {
+    bg: 'bg_city.jpg',
+    character: null,
+    speaker: '',
+    text: 'На центральной площади солдаты безопасности арестовали старика за то, что он читал запрещённую книгу. Его увели, а толпа молчала. Все молчали. Кроме меня.',
+    next: 'intro4'
+  },
+  intro4: {
+    bg: 'bg_city.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Я не выдержала. Крикнула: "Отпустите его!" Меня схватили, избили и выбросили в переулке района, о котором я почти ничего не знала — района, где живут те, кто не подчиняется.',
+    next: 'meet_liponsi'
+  },
+  
+  // ===== ВСТРЕЧА С ЛИПОНСИ =====
+  meet_liponsi: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: '???',
+    text: 'Эй, ты жива? Не шевелись, патруль пройдёт через минуту.',
+    next: 'meet_liponsi2'
+  },
+  meet_liponsi2: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Меня зовут Липонси. Я сын старейшины этого района. Ты — та девушка с площади? Смелая. Или глупая. Пока не решил.',
+    next: 'meet_liponsi3'
+  },
+  meet_liponsi3: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Я не могла молчать. Они убивают людей за мысли. За книги. За правду.',
+    next: 'meet_liponsi4'
+  },
+  meet_liponsi4: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Здесь, в нашем районе, мы боремся. Тайно. Но нам нужны новые лица — те, кто ещё не в списках безопасности. У меня к тебе предложение.',
+    next: 'first_choice'
+  },
+  
+  // ===== ПЕРВЫЙ ВЫБОР =====
+  first_choice: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Три пути, Валерьяна. Выбирай.',
+    choices: [
+      { text: '🔥 Присоединиться к сопротивлению', next: 'resistance_path', effect: { trust: 2, courage: 1 } },
+      { text: '🏛️ Проникнуть в систему изнутри', next: 'duma_path', effect: { influence: 2, courage: 1 } },
+      { text: '🚪 Бежать из города', next: 'escape_path', effect: { courage: -1 } }
+    ]
+  },
+  
+  // ===== ЛИНИЯ СОПРОТИВЛЕНИЯ =====
+  resistance_path: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Добро пожаловать в семью. Мой отец — старейшина — ждёт тебя. Но сначала скажи: как мы будем действовать?',
+    next: 'resistance_choice'
+  },
+  resistance_choice: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'У нас два плана. Один — дерзкий, другой — долгий.',
+    choices: [
+      { text: '⚔️ Атаковать Думу напрямую', next: 'attack_duma', effect: { courage: 2 } },
+      { text: ' Поднять народное восстание', next: 'uprising', effect: { trust: 2 } }
+    ]
+  },
+  
+  attack_duma: {
+    bg: 'bg_duma.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Мы проникли в зал Думы во время заседания. Депутаты замерли. Липонси поднял голос: "Эпоха лжи заканчивается сегодня!"',
+    next: 'attack_duma2'
+  },
+  attack_duma2: {
+    bg: 'bg_duma.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Валерьяна, у меня есть компромат на всех депутатов. Опубликуем его в эфир — и режим падёт за час. Но нас арестуют.',
+    next: 'attack_choice'
+  },
+  attack_choice: {
+    bg: 'bg_duma.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Момент истины...',
+    choices: [
+      { text: '📡 Опубликовать всё и принять арест', next: 'ending_democracy', effect: { courage: 3 } },
+      { text: '💑 Сбежать с Липонси и продолжить борьбу', next: 'ending_marriage', effect: { trust: 3 } }
+    ]
+  },
+  
+  uprising: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Мы распространяли листовки, организовывали ячейки в каждом районе. Через месяц весь город знал правду. Но режим готовил карательную операцию.',
+    next: 'uprising2'
+  },
+  uprising2: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Липонси посмотрел на меня серьёзно: "Отец говорит, что кто-то должен отвлечь охрану. Это почти верная смерть."',
+    next: 'uprising_choice'
+  },
+  uprising_choice: {
+    bg: 'bg_resistance.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Я не отпущу тебя одну. Но если мы пойдём вместе — у народа будет шанс.',
+    choices: [
+      { text: '️ Пойти вместе и пожертвовать собой ради народа', next: 'ending_democracy', effect: { courage: 3 } },
+      { text: '💍 Остаться с Липонси и бороться дальше', next: 'ending_marriage', effect: { trust: 3 } }
+    ]
+  },
+  
+  // ===== ЛИНИЯ ДУМЫ =====
+  duma_path: {
+    bg: 'bg_duma.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Я решила действовать изнутри. Подделала документы и устроилась помощницей депутата. Липонси снабжал меня информацией из района.',
+    next: 'duma2'
+  },
+  duma2: {
+    bg: 'bg_duma.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: '(тайная встреча) Валерьяна, я нашёл доказательства: депутаты продают ресурсы города иностранным корпорациям. Народ голодает, а они богатеют.',
+    next: 'duma3'
+  },
+  duma3: {
+    bg: 'bg_duma.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Я собрала всё в одно досье. Но чтобы обнародовать — нужно выступить на заседании. Это значит раскрыть себя.',
+    next: 'duma_choice'
+  },
+  duma_choice: {
+    bg: 'bg_duma.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Я буду рядом. Что бы ты ни выбрала.',
+    choices: [
+      { text: '🎤 Выступить и разоблачить всех', next: 'ending_democracy', effect: { influence: 3, courage: 2 } },
+      { text: '💑 Сбежать с Липонси и начать новую борьбу', next: 'ending_marriage', effect: { trust: 3 } }
+    ]
+  },
+  
+  // ===== ЛИНИЯ ПОБЕГА =====
+  escape_path: {
+    bg: 'bg_city.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Я не герой. Я просто хочу жить. Собрала вещи и пошла к границе города, где, по слухам, есть лазейка.',
+    next: 'escape2'
+  },
+  escape2: {
+    bg: 'bg_city.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: '(перехватывает в переулке) Валерьяна, стой! Ты правда уходишь? Оставляешь всех здесь?',
+    next: 'escape3'
+  },
+  escape3: {
+    bg: 'bg_city.jpg',
+    character: 'char_valeryana.png',
+    speaker: 'Валерьяна',
+    text: 'Я... я не могу больше. Меня избили. Я боюсь.',
+    next: 'escape_choice'
+  },
+  escape_choice: {
+    bg: 'bg_city.jpg',
+    character: 'char_liponsi.png',
+    speaker: 'Липонси',
+    text: 'Понимаю. Но знай — каждый, кто уходит, делает режим сильнее. Последний шанс.',
+    choices: [
+      { text: '😢 Всё равно уйти', next: 'ending_escape', effect: {} },
+      { text: '💪 Остаться и бороться', next: 'resistance_path', effect: { courage: 2, trust: 1 } }
+    ]
+  },
+  
+  // ===== КОНЦОВКИ =====
+  ending_democracy: {
+    type: 'ending',
+    ending: 1,
+    title: '🕊️ КОНЦОВКА 1: РАССВЕТ СВОБОДЫ',
+    text: 'Валерьяна выступила перед всем городом. Компромат был обнародован. Депутаты арестованы. Тоталитарный режим Т-404 пал за одну ночь.\n\nЧерез год прошли первые свободные выборы. Валерьяна стала главой нового демократического совета. Липонси — её заместителем. Город расцвёл.\n\nНо в тенях старого режима ещё шевелились те, кто не простил поражения...'
+  },
+  ending_marriage: {
+    type: 'ending',
+    ending: 2,
+    title: '💍 КОНЦОВКА 2: СОЮЗ ДВУХ СЕРДЕЦ',
+    text: 'Валерьяна и Липонси сбежали вместе. Через год они тайно обвенчались в часовне района сопротивления — под благословение отца Липонси.\n\nОни продолжили борьбу: Валерьяна — изнутри системы, Липонси — с улиц. Режим всё ещё стоит, но трещины в нём растут.\n\nОднажды ночью Липонси получил зашифрованное послание: "Они знают про вас. Бегите. Или идите до конца."\n\nЭто было начало второй главы их истории...\n\n[ПРОДОЛЖЕНИЕ СЛЕДУЕТ В ЧАСТИ 2]'
+  },
+  ending_escape: {
+    type: 'ending',
+    ending: 3,
+    title: '🚪 КОНЦОВКА 3: ДОРОГА В НИКУДА',
+    text: 'Валерьяна пересекла границу Т-404 под покровом ночи. За спиной остался город, в котором она родилась. Впереди — неизвестность.\n\nОна выжила. Но каждую ночь ей снится Липонси и лица тех, кого она оставила. Режим усилился — ещё один беглец стал для них пропагандой: "Смотрите, даже свои предают."\n\nВалерьяна свободна. Но свободна ли её совесть?\n\n[ПЛОХАЯ КОНЦОВКА]'
+  }
+};
+
+// ============ ДВИЖОК ИГРЫ ============
+const bgEl = document.getElementById('background');
+const charEl = document.getElementById('character');
+const dialogueBox = document.getElementById('dialogue-box');
+const speakerName = document.getElementById('speaker-name');
+const dialogueText = document.getElementById('dialogue-text');
+const choicesContainer = document.getElementById('choices-container');
+const titleScreen = document.getElementById('title-screen');
+
+function startGame() {
+  titleScreen.classList.add('hidden');
+  dialogueBox.classList.remove('hidden');
+  loadScene('start');
+}
+
+function loadScene(sceneId) {
+  const scene = scenes[sceneId];
+  if (!scene) return;
+  
+  gameState.currentScene = sceneId;
+  
+  // Обработка концовки
+  if (scene.type === 'ending') {
+    showEnding(scene);
+    return;
+  }
+  
+  // Фон
+  if (scene.bg) {
+    bgEl.style.backgroundImage = `url('${scene.bg}')`;
+  }
+  
+  // Персонаж
+  if (scene.character) {
+    charEl.src = scene.character;
+    charEl.classList.remove('hidden');
+  } else {
+    charEl.classList.add('hidden');
+  }
+  
+  // Диалог
+  speakerName.textContent = scene.speaker || '';
+  typeWriter(scene.text, dialogueText);
+  
+  // Выбор или продолжение
+  choicesContainer.innerHTML = '';
+  choicesContainer.classList.add('hidden');
+  
+  if (scene.choices) {
+    // Ждём окончания анимации текста
+    setTimeout(() => {
+      showChoices(scene.choices);
+    }, scene.text.length * 30 + 500);
+  } else if (scene.next) {
+    dialogueBox.onclick = () => {
+      dialogueBox.onclick = null;
+      loadScene(scene.next);
+    };
+  }
+}
+
+function typeWriter(text, element) {
+  element.textContent = '';
+  let i = 0;
+  const speed = 25;
+  function type() {
+    if (i < text.length) {
+      element.textContent += text.charAt(i);
+      i++;
+      setTimeout(type, speed);
+    }
+  }
+  type();
+}
+
+function showChoices(choices) {
+  choicesContainer.classList.remove('hidden');
+  choices.forEach(choice => {
+    const btn = document.createElement('button');
+    btn.className = 'choice-btn';
+    btn.textContent = choice.text;
+    btn.onclick = () => {
+      if (choice.effect) {
+        Object.keys(choice.effect).forEach(key => {
+          gameState[key] = (gameState[key] || 0) + choice.effect[key];
+        });
+      }
+      choicesContainer.classList.add('hidden');
+      loadScene(choice.next);
+    };
+    choicesContainer.appendChild(btn);
+  });
+}
+
+function showEnding(scene) {
+  bgEl.style.backgroundImage = scene.ending === 1 ? "url('bg_city.jpg')" : 
+                                scene.ending === 2 ? "url('bg_resistance.jpg')" : 
+                                "url('bg_city.jpg')";
+  charEl.classList.add('hidden');
+  dialogueBox.classList.add('hidden');
+  
+  const endDiv = document.createElement('div');
+  endDiv.className = 'ending-screen fade-in';
+  
+  const color = scene.ending === 1 ? '#44ff44' : scene.ending === 2 ? '#ffaa44' : '#ff4444';
+  endDiv.innerHTML = `
+    <h2 style="color:${color}">${scene.title}</h2>
+    <p style="white-space: pre-line">${scene.text}</p>
+    <button onclick="location.reload()">НАЧАТЬ ЗАНОВО</button>
+  `;
+  document.getElementById('game-container').appendChild(endDiv);
+}
+</script>
+
+</body>
+</html>
